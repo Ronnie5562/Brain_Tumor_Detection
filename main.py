@@ -1,5 +1,6 @@
 import os
-from fastapi import FastAPI, UploadFile, File, HTTPException, Form
+import datetime
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form, BackgroundTasks
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -11,6 +12,8 @@ import sys
 from pathlib import Path
 
 from src.prediction import BrainTumorPredictor
+from src.retrain import ModelRetrainer
+
 
 app = FastAPI(
     title="Brain Tumor Detection API",
@@ -24,9 +27,14 @@ UPLOAD_DIR = './uploads'
 TEMP_DIR = './uploads/temp'
 MODEL_PATH = './models/model_2.keras'
 
+RETRAIN_MODELS_DIR = './models/retrained'
+RETRAIN_DATA_DIR = './data/retrain_data'
+
+
 # Ensure upload directories exist
 Path(UPLOAD_DIR).mkdir(exist_ok=True)
 Path(TEMP_DIR).mkdir(exist_ok=True)
+Path(RETRAIN_MODELS_DIR).mkdir(exist_ok=True)
 
 # Create predictor instance
 predictor = BrainTumorPredictor(model_path=MODEL_PATH)
@@ -108,6 +116,104 @@ async def predict_image(file: UploadFile = File(...)):
         # Clean up temp file if it exists
         if 'file_location' in locals() and os.path.exists(file_location):
             os.remove(file_location)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/retrain/")
+async def retrain_model(background_tasks: BackgroundTasks,
+                        epochs: int = 10,
+                        batch_size: int = 16,
+                        learning_rate: float = 0.0001):
+    """
+    Retrain the brain tumor detection model with new data
+    """
+    try:
+        # Verify that training data exists
+        yes_dir = os.path.join(RETRAIN_DATA_DIR, 'yes')
+        no_dir = os.path.join(RETRAIN_DATA_DIR, 'no')
+
+        if not os.path.exists(yes_dir) or not os.path.exists(no_dir):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Training data directories not found at {yes_dir} and {no_dir}"
+            )
+
+        # Count images in training directories
+        yes_images = len([f for f in os.listdir(yes_dir)
+                         if os.path.isfile(os.path.join(yes_dir, f))])
+        no_images = len([f for f in os.listdir(no_dir)
+                        if os.path.isfile(os.path.join(no_dir, f))])
+
+        if yes_images == 0 or no_images == 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Training data missing: Found {yes_images} 'yes' images and {no_images} 'no' images"
+            )
+
+        timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        job_dir = os.path.join(RETRAIN_MODELS_DIR, timestamp)
+        os.makedirs(job_dir, exist_ok=True)
+
+        # Initialize the retrainer
+        retrainer = ModelRetrainer(
+            base_model_path=MODEL_PATH,
+            retrain_data_dir=RETRAIN_DATA_DIR,
+            output_dir=job_dir
+        )
+
+        # Run retraining as a background task
+        def retrain_task():
+            try:
+                result = retrainer.retrain_model(
+                    epochs=epochs,
+                    batch_size=batch_size,
+                    learning_rate=learning_rate
+                )
+
+                retrained_model_path = result['model_path']
+                backup_path = f"{MODEL_PATH}.backup.{timestamp}"
+
+                shutil.copy(MODEL_PATH, backup_path)
+
+                shutil.copy(retrained_model_path, MODEL_PATH)
+
+                predictor.load_model()
+
+                # Save retraining metadata
+                metadata = {
+                    "timestamp": timestamp,
+                    "epochs": epochs,
+                    "batch_size": batch_size,
+                    "learning_rate": learning_rate,
+                    "yes_images": yes_images,
+                    "no_images": no_images,
+                    "training_samples": result['training_samples'],
+                    "validation_samples": result['validation_samples'],
+                    "final_accuracy": result['final_accuracy'],
+                    "final_val_accuracy": result['final_val_accuracy'],
+                    "model_backup_path": backup_path,
+                    "new_model_path": retrained_model_path
+                }
+
+                pd.DataFrame([metadata]).to_csv(os.path.join(
+                    job_dir, "retraining_metadata.csv"), index=False)
+
+            except Exception as e:
+                print(f"Retraining failed: {str(e)}")
+
+        # Start the background task
+        background_tasks.add_task(retrain_task)
+
+        return JSONResponse(content={
+            "message": "Retraining started in the background",
+            "job_id": timestamp,
+            "training_data": {
+                "yes_images": yes_images,
+                "no_images": no_images
+            }
+        })
+
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
