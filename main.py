@@ -46,10 +46,10 @@ class BatchPredictionResponse(BaseModel):
 
 # Configure CORS
 origins = [
-    "http://localhost:3000",
+    "http://localhost:5173",
     "http://localhost",
     "http://localhost:8080",
-    "https://braintumordetection.vercel.app",
+    "https://cortex-ai-frontend.vercel.app/",
 ]
 
 app.add_middleware(
