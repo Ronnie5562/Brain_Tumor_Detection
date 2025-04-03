@@ -2,7 +2,10 @@
 
 This project is a Brain Tumor Classifier using Convolutional Neural Networks (CNN), built with FastAPI to expose the model via an API. It helps in classifying brain tumor images as either benign or malignant.
 
-![Video](https://github.com/user-attachments/assets/ca257281-ba0e-498d-a797-d8a135ad4102)
+
+https://github.com/user-attachments/assets/1624d696-a98f-4dda-9a57-40c13c935a84
+
+
 
 ## Project Description
 
