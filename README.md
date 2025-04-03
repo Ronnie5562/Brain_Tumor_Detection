@@ -20,7 +20,7 @@ This project is designed to classify brain tumor images using a deep learning mo
 ## Video Demo
 
 You can watch the video demonstration of the project on YouTube:
-[Watch the Demo](https://www.youtube.com/link_to_demo)
+[Watch the Demo](https://www.youtube.com/watch?v=nBCji4Lq85I)
 
 ## Requirements
 
@@ -61,7 +61,7 @@ python main.py
 You can find detailed API documentation at:
 
 ```bash
-http://127.0.0.1:8000/docs
+http://localhost:8000/docs
 ```
 
 
